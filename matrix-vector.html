@@ -302,10 +302,19 @@ const matrixInput = document.getElementById('matrixInput');
 const vectorInput = document.getElementById('vectorInput');
 const matrixPreview = document.getElementById('matrixPreview');
 const vectorPreview = document.getElementById('vectorPreview');
+function vecToLatex(raw) {
+  raw = (raw||'').trim();
+  if (!raw) return '';
+  if (raw.indexOf('\\begin') === 0) return raw;
+  var inner = raw.replace(/^[\[\(\{]+/, '').replace(/[\]\)\}]+$/, '');
+  var parts = inner.split(/[,，;；\s]+/).filter(function(x){ return x.length>0; });
+  if (!parts.length) return raw;
+  return '\\begin{pmatrix}' + parts.join(' \\\\ ') + '\\end{pmatrix}';
+}
 function renderPreviews() {
   try { katex.render(matrixInput.value, matrixPreview, {throwOnError:true, displayMode:true}); }
   catch(e) { matrixPreview.innerHTML = '<span class="err">矩阵语法错误</span>'; }
-  try { katex.render(vectorInput.value, vectorPreview, {throwOnError:true, displayMode:true}); }
+  try { katex.render(vecToLatex(vectorInput.value), vectorPreview, {throwOnError:true, displayMode:true}); }
   catch(e) { vectorPreview.innerHTML = '<span class="err">向量语法错误</span>'; }
 }
 matrixInput.addEventListener('input', renderPreviews);
