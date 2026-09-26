@@ -468,8 +468,9 @@ function loop(now) {
       for (let i = 0; i < total; i++) addRightSeg(segs[i].from, segs[i].to, 1, segs[i].color);
       if (P3.length() > 0.01) {
         const origin = new THREE.Vector3(0,0,0);
-        const dir = P3.clone().sub(origin);
-        rightPurpleArrow = new THREE.ArrowHelper(dir.normalize(), origin, dir.length() - 0.25, 0xc084fc, 0.25, 0.12);
+        const fullLen = P3.length();
+        const dir = P3.clone().sub(origin).normalize();
+        rightPurpleArrow = new THREE.ArrowHelper(dir, origin, fullLen, 0xc084fc, 0.25, 0.12);
         right.scene.add(rightPurpleArrow);
       }
       statusEl.innerHTML = '<b>变换完成</b><br>A·v = (' + Av.map(x=>+x.toFixed(2)).join(', ') + ')'
