@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>矩阵乘矩阵 · 线性变换可视化</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%234f46e5'/%3E<text x='32' y='44' font-size='24' text-anchor='middle' fill='white' font-family='serif' font-style='italic'%3EAB%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden;
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #0f1115; color: #e5e7eb; }
+  body { display: flex; }
+  .stage { position: relative; flex: 1; min-width: 0; }
+  .stage canvas { position: absolute; inset: 0; display: block; }
+  .stage-label {
+    position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+    padding: 6px 14px; border-radius: 8px; background: rgba(20,22,28,0.85);
+    font-size: 13px; font-weight: 600; color: #e5e7eb; z-index: 5;
+    pointer-events: none; white-space: nowrap;
+  }
+  .stage-label small { display: block; font-size: 11px; font-weight: 400; color: #9ca3af; margin-top: 2px; }
+  .divider { width: 1px; background: #2d323b; }
+  .panel {
+    width: 320px; flex-shrink: 0; padding: 16px; overflow-y: auto;
+    background: rgba(20,22,28,0.95); border-left: 1px solid #2d323b;
+  }
+  .panel h2 { font-size: 13px; font-weight: 600; color: #e5e7eb; margin-bottom: 8px; margin-top: 14px; }
+  .panel h2:first-child { margin-top: 0; }
+  .latex-input {
+    width: 100%; padding: 8px 10px; border: 1px solid #2d323b; border-radius: 8px;
+    font-size: 12px; outline: none; background: #1a1d24; color: #e5e7eb;
+    font-family: "SF Mono", Consolas, monospace;
+  }
+  .latex-input:focus { border-color: #6366f1; }
+  .preview {
+    margin-top: 8px; padding: 10px; background: #1a1d24; border-radius: 8px;
+    min-height: 48px; display: flex; align-items: center; justify-content: center;
+    overflow-x: auto; color: #e5e7eb;
+  }
+  .preview .err { color: #f87171; font-size: 12px; }
+  .btns { display: flex; gap: 8px; margin-top: 14px; }
+  button {
+    flex: 1; padding: 9px 0; border: none; border-radius: 8px; cursor: pointer;
+    font-size: 13px; font-weight: 600; transition: transform .1s;
+  }
+  button:active { transform: scale(0.97); }
+  .btn-primary { background: #4f46e5; color: #fff; }
+  .btn-primary:hover { background: #4338ca; }
+  .btn-ghost { background: #2d323b; color: #d1d5db; }
+  .btn-ghost:hover { background: #3a3f4a; }
+  .status {
+    margin-top: 12px; padding: 10px 12px; border-radius: 8px;
+    background: #1a1d24; font-size: 12px; line-height: 1.6; color: #9ca3af;
+    min-height: 50px;
+  }
+  .status b { color: #e5e7eb; }
+  .legend { margin-top: 12px; font-size: 11px; color: #9ca3af; line-height: 1.9; }
+  .legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+
+  /* ===== side drawer ===== */
+  .drawer {
+    width: 56px; flex-shrink: 0; background: #15181e;
+    border-right: 1px solid #2d323b; padding: 14px 8px;
+    display: flex; flex-direction: column; gap: 4px;
+    overflow: hidden; transition: width .2s ease;
+  }
+  .drawer:hover { width: 220px; }
+  .drawer-logo {
+    width: 36px; height: 36px; border-radius: 9px; margin: 0 auto 14px;
+    background: #4f46e5; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .drawer-logo svg { width: 20px; height: 20px; }
+  .drawer-title {
+    font-size: 13px; font-weight: 700; color: #e5e7eb;
+    padding: 0 10px 14px; letter-spacing: 0.5px; white-space: nowrap;
+    opacity: 0; transition: opacity .15s ease .05s;
+  }
+  .drawer:hover .drawer-title { opacity: 1; }
+  .drawer-link {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 10px; border-radius: 8px; white-space: nowrap;
+    color: #9ca3af; text-decoration: none; font-size: 13px; transition: all .15s;
+  }
+  .drawer-link .ico {
+    width: 18px; height: 18px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 13px;
+  }
+  .drawer-link .txt { opacity: 0; transition: opacity .15s ease .05s; }
+  .drawer:hover .drawer-link .txt { opacity: 1; }
+  .drawer-link:hover { background: #1f232b; color: #e5e7eb; }
+  .drawer-link.active { background: #4f46e5; color: #fff; }
+  .drawer-sep { height: 1px; background: #2d323b; margin: 8px 4px; }
+</style>
+</head>
+<body data-page="mm"><nav class="drawer">
+  <div class="drawer-logo"><svg viewBox="0 0 24 24" fill="none"><path d="M5 18 L12 5 L19 18" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+  <div class="drawer-title">线性代数 3D</div>
+  <a href="index.html" class="drawer-link" data-page="home"><span class="ico">⌂</span><span class="txt">欢迎页</span></a>
+  <div class="drawer-sep"></div>
+  <a href="coordinate-system-and-vector.html" class="drawer-link" data-page="coord"><span class="ico">⊕</span><span class="txt">坐标系与向量</span></a>
+  <a href="matrix-vector.html" class="drawer-link" data-page="mv"><span class="ico">→</span><span class="txt">矩阵 × 向量</span></a>
+  <a href="matrix-matrix.html" class="drawer-link" data-page="mm"><span class="ico">⇉</span><span class="txt">矩阵 × 矩阵</span></a>
+</nav>
+
+
+<div class="stage" id="stageLeft">
+  <div class="stage-label">B 矩阵<small>被乘矩阵的列向量 b₁, b₂, b₃</small></div>
+</div>
+<div class="divider"></div>
+<div class="stage" id="stageRight">
+  <div class="stage-label">A·B 矩阵<small>右栏以 a₁,a₂,a₃ 为基，小球依次走完 B 的每一列</small></div>
+</div>
+
+<div class="panel">
+  <h2>矩阵 A（作用矩阵）</h2>
+  <input id="matrixAInput" class="latex-input" type="text"
+    value="\begin{bmatrix}2&amp;1&amp;0\\0&amp;1&amp;3\\0&amp;0&amp;2\end{bmatrix}" spellcheck="false">
+  <div class="preview" id="matrixAPreview"></div>
+
+  <h2>矩阵 B（被作用矩阵）</h2>
+  <input id="matrixBInput" class="latex-input" type="text"
+    value="\begin{bmatrix}1&amp;0&amp;0\\2&amp;2&amp;3\\0&amp;0&amp;1\end{bmatrix}" spellcheck="false">
+  <div class="preview" id="matrixBPreview"></div>
+
+  <div class="btns">
+    <button class="btn-primary" id="applyBtn">应用变换</button>
+    <button class="btn-ghost" id="resetBtn">重置</button>
+  </div>
+  <div class="status" id="status">输入 A 和 B，点击「应用变换」：右栏小球会沿基 a₁,a₂,a₃ 依次走完 B 的每一列。</div>
+  <div class="legend">
+    <div><span class="dot" style="background:#ef4444"></span>基 a₁（A 的第 1 列）</div>
+    <div><span class="dot" style="background:#22c55e"></span>基 a₂（A 的第 2 列）</div>
+    <div><span class="dot" style="background:#3b82f6"></span>基 a₃（A 的第 3 列）</div>
+    <div><span class="dot" style="background:#c084fc"></span>A·b₁, A·b₂, A·b₃</div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+function to3dVec(arr) {
+  const x = arr[0]||0, y = arr[1]||0, z = arr[2]||0;
+  return new THREE.Vector3(y, z, x);
+}
+function to3d(x,y,z){ return to3dVec([x,y,z]); }
+
+function createStage(container) {
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  renderer.setClearColor(0x0f1115);
+  container.appendChild(renderer.domElement);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(45, container.clientWidth/container.clientHeight, 0.1, 200);
+  camera.position.set(8, 6, 10);
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true; controls.dampingFactor = 0.08;
+  controls.target.set(1.5, 1.5, 1.5);
+  controls.minDistance = 3; controls.maxDistance = 30;
+  controls.maxPolarAngle = Math.PI * 0.49;
+  scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.4);
+  dir.position.set(8, 15, 6); scene.add(dir);
+  const AX = 6;
+  [[1,0,0,0x555555],[0,1,0,0x555555],[0,0,1,0x555555]].forEach(([x,y,z,color]) => {
+    const d = to3d(x,y,z);
+    scene.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), d.multiplyScalar(AX)]),
+      new THREE.LineBasicMaterial({ color })));
+  });
+  scene.add(new THREE.GridHelper(AX*2, AX*2, 0x2d323b, 0x1f232b));
+  return { scene, camera, renderer, controls, container };
+}
+const left = createStage(document.getElementById('stageLeft'));
+const right = createStage(document.getElementById('stageRight'));
+
+function setArrow(arrow, dirArr, length) {
+  const d = to3dVec(dirArr).normalize();
+  arrow.position.set(0,0,0);
+  arrow.setDirection(d);
+  arrow.setLength(Math.max(length, 0.001), 0.28, 0.14);
+}
+function makeArrow(color) {
+  return new THREE.ArrowHelper(new THREE.Vector3(0,1,0), new THREE.Vector3(0,0,0), 1, color, 0.18, 0.08);
+}
+function makeLabel(text, color) {
+  const cv = document.createElement('canvas');
+  cv.width = 256; cv.height = 128;
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0,0,256,128);
+  ctx.fillStyle = color;
+  ctx.font = 'italic bold 80px Georgia, serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, 128, 64);
+  const tex = new THREE.CanvasTexture(cv);
+  return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+}
+
+const COLORS = [0xef4444, 0x22c55e, 0x3b82f6];
+const COLORS_LIGHT = ['#f87171', '#4ade80', '#60a5fa'];
+
+// 左面板：B 的列向量 b₁,b₂,b₃
+const leftArrows = [makeArrow(COLORS[0]), makeArrow(COLORS[1]), makeArrow(COLORS[2])];
+const leftLabels = [makeLabel('b₁',COLORS_LIGHT[0]), makeLabel('b₂',COLORS_LIGHT[1]), makeLabel('b₃',COLORS_LIGHT[2])];
+leftArrows.forEach(a => left.scene.add(a));
+leftLabels.forEach(l => left.scene.add(l));
+
+// 右面板：新基 î,ĵ,k̂（A 的列）+ 小球 + 路径 + 紫色合成箭头
+const basisArrows = [makeArrow(COLORS[0]), makeArrow(COLORS[1]), makeArrow(COLORS[2])];
+const basisLabels = [makeLabel('a₁',COLORS_LIGHT[0]), makeLabel('a₂',COLORS_LIGHT[1]), makeLabel('a₃',COLORS_LIGHT[2])];
+basisArrows.forEach(a => right.scene.add(a));
+basisLabels.forEach(l => right.scene.add(l));
+
+const ball = new THREE.Mesh(
+  new THREE.SphereGeometry(0.09, 20, 20),
+  new THREE.MeshStandardMaterial({ color: 0x111827, emissive: 0xc084fc, emissiveIntensity: 0.6, roughness: 0.3 })
+);
+right.scene.add(ball); ball.position.copy(to3d(0,0,0));
+
+const pathGroup = new THREE.Group(); right.scene.add(pathGroup);
+const purpleArrows = [];
+const endBalls = [];
+function clearEndBalls() {
+  endBalls.forEach(b => right.scene.remove(b));
+  endBalls.length = 0;
+}
+function makeEndBall() {
+  return new THREE.Mesh(
+    new THREE.SphereGeometry(0.11, 20, 20),
+    new THREE.MeshStandardMaterial({ color: 0x111827, emissive: 0xc084fc, emissiveIntensity: 0.9, roughness: 0.3 })
+  );
+}
+
+// ============ 解析 ============
+function parseMatrix(str) {
+  const m = (str||'').match(/\\begin\{(?:bmatrix|pmatrix|matrix|Bmatrix)\}(.+?)\\end\{/);
+  if (!m) return null;
+  const rows = m[1].split(/\\\\/).map(r => r.trim()).filter(Boolean);
+  const mat = rows.map(row => row.split(/&/).map(s => {
+    const n = parseFloat(s.trim()); return isNaN(n) ? 0 : n;
+  }));
+  if (!mat.length) return null;
+  const ncols = mat[0].length;
+  if (mat.some(r => r.length !== ncols)) return null;
+  if (mat.length > 3 || ncols > 3) return null;
+  return mat;
+}
+function matMul(A, B) {
+  const m = A.length, n = A[0].length, p = B[0].length;
+  if (B.length !== n) return null;
+  const C = [];
+  for (let i = 0; i < m; i++) {
+    const row = [];
+    for (let j = 0; j < p; j++) {
+      let s = 0;
+      for (let k = 0; k < n; k++) s += A[i][k] * B[k][j];
+      row.push(s);
+    }
+    C.push(row);
+  }
+  return C;
+}
+function colsOf(M) {
+  const m = M.length, n = M[0].length;
+  const cols = [];
+  for (let j = 0; j < n; j++) {
+    const col = [];
+    for (let i = 0; i < m; i++) col.push(M[i][j]);
+    cols.push(col);
+  }
+  return cols;
+}
+
+// ============ KaTeX ============
+const aInput = document.getElementById('matrixAInput');
+const bInput = document.getElementById('matrixBInput');
+const aPreview = document.getElementById('matrixAPreview');
+const bPreview = document.getElementById('matrixBPreview');
+function renderPreviews() {
+  try { katex.render(aInput.value, aPreview, {throwOnError:true, displayMode:true}); }
+  catch(e) { aPreview.innerHTML = '<span class="err">矩阵 A 语法错误</span>'; }
+  try { katex.render(bInput.value, bPreview, {throwOnError:true, displayMode:true}); }
+  catch(e) { bPreview.innerHTML = '<span class="err">矩阵 B 语法错误</span>'; }
+}
+aInput.addEventListener('input', renderPreviews);
+bInput.addEventListener('input', renderPreviews);
+renderPreviews();
+
+// ============ 工具 ============
+function drawLeftCols(cols) {
+  leftArrows.forEach((a, i) => {
+    const c = cols[i];
+    const show = !!c;
+    a.visible = show; leftLabels[i].visible = show;
+    if (show) {
+      const len = Math.hypot(...c);
+      setArrow(a, c, len);
+      leftLabels[i].position.copy(to3dVec(c).normalize().multiplyScalar(len + 0.35));
+    }
+  });
+}
+function setBasis(cols) {
+  basisArrows.forEach((a, i) => {
+    const c = cols[i];
+    const show = !!c;
+    a.visible = show; basisLabels[i].visible = show;
+    if (show) {
+      const len = Math.hypot(...c);
+      setArrow(a, c, len);
+      basisLabels[i].position.copy(to3dVec(c).normalize().multiplyScalar(len + 0.35));
+    }
+  });
+}
+function clearPath() {
+  while (pathGroup.children.length) {
+    const c = pathGroup.children.pop();
+    c.geometry.dispose(); c.material.dispose();
+  }
+}
+function clearPurple() {
+  purpleArrows.forEach(a => right.scene.remove(a));
+  purpleArrows.length = 0;
+}
+function addSeg(a, b, t, color) {
+  const cur = a.clone().lerp(b, t);
+  pathGroup.add(new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([a, cur]),
+    new THREE.LineBasicMaterial({ color })));
+}
+function ease(t){ return t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; }
+function fitCamera(stage, dim) {
+  if (dim === 2) { stage.camera.position.set(0.01,9,0.01); stage.controls.target.set(0,0,0); }
+  else if (dim === 1) { stage.camera.position.set(6,2,0.01); stage.controls.target.set(1.5,0,0); }
+  else { stage.camera.position.set(8,6,10); stage.controls.target.set(1.5,1.5,1.5); }
+  stage.camera.lookAt(stage.controls.target);
+}
+
+// ============ 动画 ============
+const statusEl = document.getElementById('status');
+let anim = null;
+const SEG_DUR = 800;
+const GAP_DUR = 400;
+
+function applyTransform() {
+  if (anim) return;
+  const A = parseMatrix(aInput.value);
+  const B = parseMatrix(bInput.value);
+  if (!A) { statusEl.innerHTML = '<b>矩阵 A 解析失败</b>'; return; }
+  if (!B) { statusEl.innerHTML = '<b>矩阵 B 解析失败</b>'; return; }
+  const C = matMul(A, B);
+  if (!C) {
+    statusEl.innerHTML = '<b>维度不匹配</b><br>A 是 ' + A.length + '×' + A[0].length +
+      '，B 是 ' + B.length + '×' + B[0].length + '；需要 A 的列数 = B 的行数。';
+    return;
+  }
+  const colsA = colsOf(A);
+  const colsB = colsOf(B);
+  const colsC = colsOf(C);
+
+  drawLeftCols(colsB);
+  setBasis(colsA);
+  clearPath(); clearPurple(); clearEndBalls();
+  fitCamera(left, B.length);
+  fitCamera(right, C.length);
+
+  // 为每一列 b_j 构建路径：在新基 î,ĵ,k̂ 下走 b_j1·î, b_j2·ĵ, b_j3·k̂
+  const columnPlans = [];
+  for (let j = 0; j < colsB.length; j++) {
+    const bj = colsB[j];
+    const pts = [to3d(0,0,0)];
+    let cur = to3d(0,0,0);
+    for (let k = 0; k < 3; k++) {
+      const step = to3dVec((colsA[k]||[0,0,0]).map(x => x * (bj[k]||0)));
+      cur = cur.clone().add(step);
+      pts.push(cur.clone());
+    }
+    const segs = [];
+    for (let k = 0; k < 3; k++) {
+      if ((bj[k]||0) !== 0) segs.push({ from: pts[k], to: pts[k+1], color: COLORS[k], axis: ['a₁','a₂','a₃'][k], value: bj[k] });
+    }
+    columnPlans.push({ segs, end: pts[3], colsC_j: colsC[j] });
+  }
+
+  anim = { start: performance.now(), columnPlans };
+  statusEl.innerHTML = '<b>第 1 / ' + columnPlans.length + ' 列</b><br>从 O 沿新基出发 …';
+}
+
+function resetView() {
+  anim = null;
+  drawLeftCols([[1,0,0],[0,1,0],[0,0,1]]);
+  setBasis([[1,0,0],[0,1,0],[0,0,1]]);
+  clearPath(); clearPurple(); clearEndBalls();
+  ball.position.copy(to3d(0,0,0));
+  fitCamera(left, 3); fitCamera(right, 3);
+  statusEl.innerHTML = '已重置。';
+}
+
+document.getElementById('applyBtn').addEventListener('click', applyTransform);
+document.getElementById('resetBtn').addEventListener('click', resetView);
+
+drawLeftCols([[1,0,0],[0,1,0],[0,0,1]]);
+setBasis([[1,0,0],[0,1,0],[0,0,1]]);
+
+function loop(now) {
+  requestAnimationFrame(loop);
+  left.controls.update(); right.controls.update();
+
+  if (anim) {
+    const { columnPlans } = anim;
+    const totalCols = columnPlans.length;
+
+    let t = now - anim.start;
+    let colIdx = 0, segIdx = 0, segLocalT = 0, doneWalk = false;
+    for (let j = 0; j < totalCols; j++) {
+      const ns = columnPlans[j].segs.length;
+      const segTime = ns * SEG_DUR;
+      if (t < segTime) {
+        segIdx = Math.floor(t / SEG_DUR);
+        segLocalT = (t % SEG_DUR) / SEG_DUR;
+        colIdx = j;
+        break;
+      }
+      t -= segTime;
+      if (j < totalCols - 1) {
+        if (t < GAP_DUR) { colIdx = j; segIdx = ns; segLocalT = 1; break; }
+        t -= GAP_DUR;
+      } else {
+        colIdx = j; segIdx = ns; segLocalT = 1; doneWalk = true;
+      }
+    }
+
+    clearPath();
+    for (let j = 0; j < totalCols; j++) {
+      const segs = columnPlans[j].segs;
+      for (let s = 0; s < segs.length; s++) {
+        const drawn = (j < colIdx) || (j === colIdx && s < segIdx);
+        const isCur = (j === colIdx && s === segIdx && !doneWalk && segIdx < segs.length);
+        if (drawn) addSeg(segs[s].from, segs[s].to, 1, segs[s].color);
+        else if (isCur) addSeg(segs[s].from, segs[s].to, ease(segLocalT), segs[s].color);
+      }
+    }
+
+    if (!doneWalk) {
+      let cur;
+      const segs = columnPlans[colIdx].segs;
+      if (segIdx < segs.length) {
+        cur = segs[segIdx].from.clone().lerp(segs[segIdx].to, ease(segLocalT));
+        const s = segs[segIdx];
+        statusEl.innerHTML = '<b>第 ' + (colIdx+1) + '/' + totalCols + ' 列</b> · 段 ' + (segIdx+1) + '/' + segs.length
+          + '<br>沿新基 <b>' + s.axis + '</b> 走 ' + s.value + ' 个单位 …';
+      } else {
+        cur = segs[segs.length-1].to.clone();
+        statusEl.innerHTML = '<b>第 ' + (colIdx+1) + '/' + totalCols + ' 列走完</b><br>稍候，开始下一列 …';
+      }
+      ball.position.copy(cur);
+    } else {
+      columnPlans.forEach((plan, j) => {
+        if (purpleArrows.length > j) return;
+        const end = plan.end;
+        if (end.length() > 0.01) {
+          const origin = new THREE.Vector3(0,0,0);
+          const fullLen = end.length();
+          const dir = end.clone().sub(origin).normalize();
+          const arrow = new THREE.ArrowHelper(dir, origin, fullLen, 0xc084fc, 0.22, 0.11);
+          right.scene.add(arrow);
+          purpleArrows.push(arrow);
+          const eb = makeEndBall();
+          eb.position.copy(end);
+          right.scene.add(eb);
+          endBalls.push(eb);
+        }
+      });
+      ball.position.copy(columnPlans[totalCols-1].end);
+      let html = '<b>全部完成</b><br>C = A·B，共 ' + totalCols + ' 列';
+      columnPlans.forEach((p, j) => {
+        html += '<br>A·b' + (j+1) + ' = (' + p.colsC_j.map(x=>+x.toFixed(2)).join(', ') + ')';
+      });
+      statusEl.innerHTML = html;
+      anim = null;
+    }
+  }
+
+  left.renderer.render(left.scene, left.camera);
+  right.renderer.render(right.scene, right.camera);
+}
+loop();
+
+window.addEventListener('resize', () => {
+  [left, right].forEach(s => {
+    const w = s.container.clientWidth, h = s.container.clientHeight;
+    s.camera.aspect = w/h; s.camera.updateProjectionMatrix();
+    s.renderer.setSize(w, h);
+  });
+});
+</script>
+<script>
+  // highlight current page in drawer
+  (function(){
+    var page = document.body.getAttribute('data-page');
+    if (!page) return;
+    document.querySelectorAll('.drawer-link').forEach(function(a){
+      if (a.getAttribute('data-page') === page) a.classList.add('active');
+    });
+  })();
+</script>
+</body>
+</html>

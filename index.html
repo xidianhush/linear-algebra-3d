@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>线性代数 3D 可视化</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%234f46e5'/%3E<path d='M18 46 L32 18 L46 46' stroke='white' stroke-width='4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #0f1115; color: #e5e7eb; display: flex;
+  }
+  /* drawer (shared) */
+  .drawer {
+    width: 56px; flex-shrink: 0; background: #15181e;
+    border-right: 1px solid #2d323b; padding: 14px 8px;
+    display: flex; flex-direction: column; gap: 4px;
+    overflow: hidden; transition: width .2s ease;
+  }
+  .drawer:hover { width: 220px; }
+  .drawer-logo {
+    width: 36px; height: 36px; border-radius: 9px; margin: 0 auto 14px;
+    background: #4f46e5; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .drawer-logo svg { width: 20px; height: 20px; }
+  .drawer-title {
+    font-size: 13px; font-weight: 700; color: #e5e7eb;
+    padding: 0 10px 14px; letter-spacing: 0.5px; white-space: nowrap;
+    opacity: 0; transition: opacity .15s ease .05s;
+  }
+  .drawer:hover .drawer-title { opacity: 1; }
+  .drawer-link {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 10px; border-radius: 8px; white-space: nowrap;
+    color: #9ca3af; text-decoration: none; font-size: 13px; transition: all .15s;
+  }
+  .drawer-link .ico {
+    width: 18px; height: 18px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 13px;
+  }
+  .drawer-link .txt { opacity: 0; transition: opacity .15s ease .05s; }
+  .drawer:hover .drawer-link .txt { opacity: 1; }
+  .drawer-link:hover { background: #1f232b; color: #e5e7eb; }
+  .drawer-link.active { background: #4f46e5; color: #fff; }
+  .drawer-sep { height: 1px; background: #2d323b; margin: 8px 4px; }
+
+  /* main content */
+  main { flex: 1; padding: 48px 56px; overflow-y: auto; }
+  .hero h1 { font-size: 28px; font-weight: 700; color: #f3f4f6; letter-spacing: 0.5px; }
+  .hero p { margin-top: 10px; font-size: 14px; color: #9ca3af; line-height: 1.7; max-width: 640px; }
+
+  .cards { margin-top: 36px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+  .card {
+    display: block; text-decoration: none; color: inherit;
+    background: #15181e; border: 1px solid #2d323b; border-radius: 14px;
+    padding: 22px; transition: transform .15s, border-color .15s;
+  }
+  .card:hover { transform: translateY(-2px); border-color: #4f46e5; }
+  .card .num { font-size: 12px; color: #6366f1; font-weight: 600; letter-spacing: 1px; }
+  .card h2 { margin-top: 8px; font-size: 17px; font-weight: 600; color: #f3f4f6; }
+  .card p { margin-top: 8px; font-size: 13px; color: #9ca3af; line-height: 1.65; }
+  .card .tag-row { margin-top: 14px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .tag { font-size: 11px; padding: 3px 8px; border-radius: 5px; background: #1f232b; color: #9ca3af; font-family: "SF Mono", Consolas, monospace; }
+</style>
+</head>
+<body data-page="home">
+
+<nav class="drawer">
+  <div class="drawer-logo"><svg viewBox="0 0 24 24" fill="none"><path d="M5 18 L12 5 L19 18" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+  <div class="drawer-title">线性代数 3D</div>
+  <a href="index.html" class="drawer-link" data-page="home"><span class="ico">⌂</span><span class="txt">欢迎页</span></a>
+  <div class="drawer-sep"></div>
+  <a href="coordinate-system-and-vector.html" class="drawer-link" data-page="coord"><span class="ico">⊕</span><span class="txt">坐标系与向量</span></a>
+  <a href="matrix-vector.html" class="drawer-link" data-page="mv"><span class="ico">→</span><span class="txt">矩阵 × 向量</span></a>
+  <a href="matrix-matrix.html" class="drawer-link" data-page="mm"><span class="ico">⇉</span><span class="txt">矩阵 × 矩阵</span></a>
+</nav>
+
+<main>
+  <div class="hero">
+    <h1>线性代数 · 三维可视化</h1>
+    <p>从最基本的直角坐标系出发，一步步看到矩阵是如何把一个向量、一整组列向量拉伸、旋转、剪切、投影的。每个页面都可以输入自己的矩阵和向量，动画会实时跑给你看。</p>
+  </div>
+
+  <div class="cards">
+    <a class="card" href="coordinate-system-and-vector.html">
+      <div class="num">01 · FOUNDATION</div>
+      <h2>坐标系与向量分解</h2>
+      <p>在三维直角坐标系里输入一个向量 (x, y, z)，小球从原点出发沿 x、y、z 轴依次走到终点，再用紫色箭头把它合成出来。留空分量自动降到一维或二维。</p>
+      <div class="tag-row"><span class="tag">3D 坐标</span><span class="tag">基向量 i,j,k</span><span class="tag">分步动画</span></div>
+    </a>
+
+    <a class="card" href="matrix-vector.html">
+      <div class="num">02 · MATRIX × VECTOR</div>
+      <h2>矩阵乘向量</h2>
+      <p>左边是标准基 i, j, k 和输入的向量 v；右边是矩阵 A 的列作为新基 î, ĵ, k̂，小球在新基里沿同样的系数走一遍，停在 A·v 的位置。支持非方阵。</p>
+      <div class="tag-row"><span class="tag">线性变换</span><span class="tag">非方阵</span><span class="tag">LaTeX 输入</span></div>
+    </a>
+
+    <a class="card" href="matrix-matrix.html">
+      <div class="num">03 · MATRIX × MATRIX</div>
+      <h2>矩阵乘矩阵</h2>
+      <p>左边画出 B 的每一列 b₁, b₂, b₃；右边以 A 的列 a₁, a₂, a₃ 为基，小球依次走完 B 的每一列，每列终点都用紫色箭头和球标出来——这就是 A 同时作用在一整组向量上。</p>
+      <div class="tag-row"><span class="tag">列空间</span><span class="tag">多列动画</span><span class="tag">降维/升维</span></div>
+    </a>
+  </div>
+</main>
+
+<script>
+  (function(){
+    var page = document.body.getAttribute('data-page');
+    document.querySelectorAll('.drawer-link').forEach(function(a){
+      if (a.getAttribute('data-page') === page) a.classList.add('active');
+    });
+  })();
+</script>
+</body>
+</html>

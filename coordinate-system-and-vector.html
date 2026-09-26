@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>线性代数 · 三维直角坐标系向量可视化</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%234f46e5'/%3E%3Cpath d='M18 46 L32 18 L46 46' stroke='white' stroke-width='4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f1115; }
+  #scene { position: absolute; top:0; right:0; bottom:0; left:56px; display: block; }
+
+  .topbar {
+    position: absolute; top: 16px; left: calc(50% + 28px); transform: translateX(-50%);
+    padding: 10px 22px; background: rgba(20,22,28,0.85); border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4); backdrop-filter: blur(8px);
+    z-index: 10; text-align: center;
+  }
+  .topbar h1 { font-size: 15px; font-weight: 600; color: #e5e7eb; letter-spacing: 0.5px; }
+  .topbar p { font-size: 12px; color: #9ca3af; margin-top: 3px; }
+
+  .panel {
+    position: absolute; top: 16px; right: 16px; width: 300px;
+    background: rgba(20,22,28,0.9); border-radius: 14px; padding: 18px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.45); backdrop-filter: blur(8px);
+    z-index: 10;
+  }
+  .panel h2 { font-size: 13px; font-weight: 600; color: #e5e7eb; margin-bottom: 12px; }
+  .latex-input {
+    width: 100%; padding: 8px 10px; border: 1px solid #2d323b; border-radius: 8px;
+    font-size: 13px; outline: none; background: #1a1d24; color: #e5e7eb;
+    font-family: "SF Mono", Consolas, monospace;
+  }
+  .latex-input:focus { border-color: #6366f1; }
+  .preview {
+    margin-top: 10px; padding: 12px; background: #1a1d24; border-radius: 8px;
+    min-height: 56px; display: flex; align-items: center; justify-content: center;
+    overflow-x: auto; color: #e5e7eb;
+  }
+  .preview .err { color: #f87171; font-size: 12px; }
+  .hint-text { font-size: 10px; color: #6b7280; margin-top: 6px; line-height: 1.5; }
+  .btns { display: flex; gap: 8px; margin-top: 14px; }
+  button {
+    flex: 1; padding: 9px 0; border: none; border-radius: 8px; cursor: pointer;
+    font-size: 13px; font-weight: 600; transition: transform .1s, opacity .15s;
+  }
+  button:active { transform: scale(0.97); }
+  .btn-primary { background: #4f46e5; color: #fff; }
+  .btn-primary:hover { background: #4338ca; }
+  .btn-ghost { background: #2d323b; color: #d1d5db; }
+  .btn-ghost:hover { background: #3a3f4a; }
+
+  .status {
+    margin-top: 14px; padding: 10px 12px; border-radius: 8px;
+    background: #1a1d24; font-size: 12px; line-height: 1.6; color: #9ca3af;
+    min-height: 56px;
+  }
+  .status b { color: #e5e7eb; }
+
+  .legend { margin-top: 12px; font-size: 11px; color: #9ca3af; line-height: 1.8; }
+  .legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+
+  .tag {
+    position: absolute; transform: translate(-50%, -130%);
+    background: rgba(229,231,235,0.95); color: #111827; padding: 4px 9px;
+    border-radius: 6px; font-size: 12px; font-family: "SF Mono", Consolas, monospace;
+    pointer-events: none; white-space: nowrap; z-index: 5;
+    transition: opacity .2s;
+  }
+  .tag::after {
+    content: ''; position: absolute; left: 50%; top: 100%; transform: translateX(-50%);
+    border: 5px solid transparent; border-top-color: rgba(229,231,235,0.95); border-bottom: none;
+  }
+
+  .hint {
+    position: absolute; bottom: 14px; right: 16px; font-size: 11px; color: #6b7280;
+    background: rgba(20,22,28,0.7); padding: 6px 10px; border-radius: 6px;
+  }
+
+  /* ===== side drawer ===== */
+  .drawer {
+    position: fixed; left:0; top:0; bottom:0; z-index:20; width: 56px; flex-shrink: 0; background: #15181e;
+    border-right: 1px solid #2d323b; padding: 14px 8px;
+    display: flex; flex-direction: column; gap: 4px;
+    overflow: hidden; transition: width .2s ease;
+  }
+  .drawer:hover { width: 220px; }
+  .drawer-logo {
+    width: 36px; height: 36px; border-radius: 9px; margin: 0 auto 14px;
+    background: #4f46e5; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .drawer-logo svg { width: 20px; height: 20px; }
+  .drawer-title {
+    font-size: 13px; font-weight: 700; color: #e5e7eb;
+    padding: 0 10px 14px; letter-spacing: 0.5px; white-space: nowrap;
+    opacity: 0; transition: opacity .15s ease .05s;
+  }
+  .drawer:hover .drawer-title { opacity: 1; }
+  .drawer-link {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 10px; border-radius: 8px; white-space: nowrap;
+    color: #9ca3af; text-decoration: none; font-size: 13px; transition: all .15s;
+  }
+  .drawer-link .ico {
+    width: 18px; height: 18px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 13px;
+  }
+  .drawer-link .txt { opacity: 0; transition: opacity .15s ease .05s; }
+  .drawer:hover .drawer-link .txt { opacity: 1; }
+  .drawer-link:hover { background: #1f232b; color: #e5e7eb; }
+  .drawer-link.active { background: #4f46e5; color: #fff; }
+  .drawer-sep { height: 1px; background: #2d323b; margin: 8px 4px; }
+</style>
+</head>
+<body data-page="coord"><nav class="drawer">
+  <div class="drawer-logo"><svg viewBox="0 0 24 24" fill="none"><path d="M5 18 L12 5 L19 18" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+  <div class="drawer-title">线性代数 3D</div>
+  <a href="index.html" class="drawer-link" data-page="home"><span class="ico">⌂</span><span class="txt">欢迎页</span></a>
+  <div class="drawer-sep"></div>
+  <a href="coordinate-system-and-vector.html" class="drawer-link" data-page="coord"><span class="ico">⊕</span><span class="txt">坐标系与向量</span></a>
+  <a href="matrix-vector.html" class="drawer-link" data-page="mv"><span class="ico">→</span><span class="txt">矩阵 × 向量</span></a>
+  <a href="matrix-matrix.html" class="drawer-link" data-page="mm"><span class="ico">⇉</span><span class="txt">矩阵 × 矩阵</span></a>
+</nav>
+
+<canvas id="scene"></canvas>
+
+<div class="topbar">
+  <h1>三维直角坐标系 · 标准正交基下的向量分解</h1>
+  <p>输入坐标 (x, y, z)，观察 e₁、e₂、e₃ 三个方向上的分量合成</p>
+</div>
+
+<div class="panel">
+  <h2>输入向量（LaTeX）</h2>
+  <input id="latexInput" class="latex-input" type="text" value="(3, 2, 4)" spellcheck="false">
+  <div class="preview" id="preview"></div>
+  <div class="hint-text">支持：(3, 2, 4)、\\begin{pmatrix}3\\\\2\\\\4\\end{pmatrix}、3e_1 + 2e_2 + 4e_3 等</div>
+  <div class="btns">
+    <button class="btn-primary" id="playBtn">播放动画</button>
+    <button class="btn-ghost" id="resetBtn">重置</button>
+  </div>
+  <div class="status" id="status">点击「播放动画」，从原点 O 出发沿坐标轴逐段合成。</div>
+  <div class="legend">
+    <div><span class="dot" style="background:#ef4444"></span>单位基向量 i = (1,0,0)</div>
+    <div><span class="dot" style="background:#22c55e"></span>单位基向量 j = (0,1,0)</div>
+    <div><span class="dot" style="background:#3b82f6"></span>单位基向量 k = (0,0,1)</div>
+    <div><span class="dot" style="background:#c084fc"></span>合成向量 x·i + y·j + z·k</div>
+  </div>
+</div>
+
+<div class="tag" id="tag" style="opacity:0"></div>
+<div class="hint">拖拽旋转 · 滚轮缩放 · 右键平移</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+const canvas = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize((window.innerWidth - 56), window.innerHeight);
+renderer.setClearColor(0x0f1115);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x0f1115, 30, 80);
+
+const camera = new THREE.PerspectiveCamera(45, (window.innerWidth - 56)/window.innerHeight, 0.1, 200);
+camera.position.set(9, 7, 11);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.target.set(2, 2, 2);
+controls.minDistance = 4;
+controls.maxDistance = 40;
+controls.maxPolarAngle = Math.PI * 0.49;
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+const dir = new THREE.DirectionalLight(0xffffff, 0.5);
+dir.position.set(8, 15, 6);
+scene.add(dir);
+
+// 数学右手系：X 朝向前方（观察者），Y 向右，Z 竖直向上
+// Three.js: X 右，Y 上，Z 朝屏幕外
+// 映射：数学 X -> Three.js +Z，数学 Y -> Three.js +X，数学 Z -> Three.js +Y
+// 这样 x̂ × ŷ = ẑ，符合右手系
+function to3d(x, y, z) {
+  return new THREE.Vector3(y, z, x);
+}
+
+const AXIS_LEN = 8;
+
+function makeAxis(dirVec, color) {
+  const mat = new THREE.LineBasicMaterial({ color });
+  const pts = [new THREE.Vector3(0,0,0), dirVec.clone().multiplyScalar(AXIS_LEN)];
+  const geo = new THREE.BufferGeometry().setFromPoints(pts);
+  scene.add(new THREE.Line(geo, mat));
+  const cone = new THREE.Mesh(
+    new THREE.ConeGeometry(0.12, 0.4, 16),
+    new THREE.MeshBasicMaterial({ color })
+  );
+  cone.position.copy(dirVec.clone().multiplyScalar(AXIS_LEN + 0.15));
+  cone.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dirVec.clone().normalize());
+  scene.add(cone);
+}
+
+makeAxis(to3d(1,0,0), 0xef4444);   // 数学 X（朝向前方）
+makeAxis(to3d(0,1,0), 0x22c55e);   // 数学 Y（向右）
+makeAxis(to3d(0,0,1), 0x3b82f6);  // 数学 Z（向上）
+
+function makeLabel(text, pos, colorHex, italic) {
+  const cvs = document.createElement('canvas');
+  const size = 64;
+  cvs.width = size; cvs.height = size;
+  const ctx = cvs.getContext('2d');
+  ctx.font = (italic ? 'italic bold ' : 'bold ') + '36px sans-serif';
+  ctx.fillStyle = '#' + colorHex.toString(16).padStart(6,'0');
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, size/2, size/2);
+  const tex = new THREE.CanvasTexture(cvs);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
+  sp.position.copy(pos);
+  sp.scale.set(0.5, 0.5, 1);
+  scene.add(sp);
+}
+
+makeLabel('x', to3d(AXIS_LEN+0.5, 0, 0), 0xef4444);
+makeLabel('y', to3d(0, AXIS_LEN+0.5, 0), 0x22c55e);
+makeLabel('z', to3d(0, 0, AXIS_LEN+0.5), 0x3b82f6);
+makeLabel('O', to3d(-0.3, -0.3, -0.3), 0x9ca3af);
+
+// 标准正交基单位向量 i, j, k（长度为 1，带小箭头）
+(function makeUnitBasis() {
+  const basis = [
+    { dir: to3d(1,0,0), color: 0xef4444, label: 'i', labelPos: to3d(1.25, 0, 0) },
+    { dir: to3d(0,1,0), color: 0x22c55e, label: 'j', labelPos: to3d(0, 1.25, 0) },
+    { dir: to3d(0,0,1), color: 0x3b82f6, label: 'k', labelPos: to3d(0, 0, 1.25) },
+  ];
+  basis.forEach(b => {
+    const unitEnd = b.dir.clone();
+    const lineEnd = unitEnd.clone().multiplyScalar(0.82);
+    scene.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), lineEnd]),
+      new THREE.LineBasicMaterial({ color: b.color })
+    ));
+    const cone = new THREE.Mesh(
+      new THREE.ConeGeometry(0.06, 0.18, 12),
+      new THREE.MeshBasicMaterial({ color: b.color })
+    );
+    cone.position.copy(unitEnd.clone().multiplyScalar(0.91));
+    cone.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), b.dir.clone().normalize());
+    scene.add(cone);
+    makeLabel(b.label, b.labelPos, b.color, true);
+  });
+})();
+
+for (let i = 1; i <= AXIS_LEN; i++) {
+  scene.add(new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([to3d(i,-0.08,0), to3d(i,0.08,0)]),
+    new THREE.LineBasicMaterial({ color: 0x4b5563 })
+  ));
+  scene.add(new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([to3d(-0.08,i,0), to3d(0.08,i,0)]),
+    new THREE.LineBasicMaterial({ color: 0x4b5563 })
+  ));
+  scene.add(new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([to3d(-0.08,0,i), to3d(0.08,0,i)]),
+    new THREE.LineBasicMaterial({ color: 0x4b5563 })
+  ));
+}
+
+// XY 地面网格（数学 z=0 平面 = Three.js y=0 的 XZ 平面）
+const grid = new THREE.GridHelper(AXIS_LEN*2, AXIS_LEN*2, 0x2d323b, 0x1f232b);
+grid.position.y = 0;
+scene.add(grid);
+
+const pathGroup = new THREE.Group();
+scene.add(pathGroup);
+
+const ball = new THREE.Mesh(
+  new THREE.SphereGeometry(0.14, 24, 24),
+  new THREE.MeshStandardMaterial({ color: 0x111827, emissive: 0x4f46e5, emissiveIntensity: 0.5, roughness: 0.3 })
+);
+scene.add(ball);
+
+let finalMarker = null;
+const tag = document.getElementById('tag');
+const statusEl = document.getElementById('status');
+
+function clearPath() {
+  while (pathGroup.children.length) {
+    const c = pathGroup.children.pop();
+    c.geometry.dispose();
+    if (c.material) c.material.dispose();
+  }
+  if (finalMarker) { scene.remove(finalMarker); finalMarker.geometry.dispose(); finalMarker = null; }
+  tag.style.opacity = 0;
+}
+
+function easeInOut(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2, 2)/2; }
+
+let animating = false;
+let animStart = 0;
+const SEG_DUR = 1100;
+let pathData = null;
+
+// ===== LaTeX 向量解析 =====
+function parseVector(str) {
+  let s = (str || '').trim();
+  if (!s) return [0, 0, 0];
+  // 去掉 \vec{v} = 、v = 这类前缀
+  s = s.replace(/\\?vec\{?[a-zA-Z]\}?\s*=\s*/, '');
+  s = s.replace(/^[a-zA-Z]\s*=\s*/, '');
+
+  // 1) 括号包围的逗号分隔：(x, y, z)  [x, y, z]  <x, y, z>
+  const bracket = s.match(/[\(\[\<]([^\)\]\>]+)[\)\]\>]/);
+  if (bracket) {
+    const nums = bracket[1].split(/[,，;；]/)
+      .map(p => parseFloat(p.trim()))
+      .filter(n => !isNaN(n));
+    if (nums.length >= 1) return [nums[0]||0, nums[1]||0, nums[2]||0];
+  }
+
+  // 2) 矩阵形式 \begin{pmatrix} x \\ y \\ z \end{pmatrix}
+  const matrix = s.match(/\\begin\{(?:pmatrix|bmatrix|Bmatrix|vmatrix|Vmatrix)\}(.+?)\\end\{/);
+  if (matrix) {
+    const rows = matrix[1].split(/\\\\/).map(r => r.trim()).filter(Boolean);
+    const nums = rows.map(r => parseFloat(r)).filter(n => !isNaN(n));
+    if (nums.length >= 1) return [nums[0]||0, nums[1]||0, nums[2]||0];
+  }
+
+  // 3) 系数形式 a e_1 + b e_2 + c e_3：先去掉基向量符号再提数字
+  let cleaned = s
+    .replace(/\\?mathbf\{[ijk]\}/g, '')
+    .replace(/\\?bold\{[ijk]\}/g, '')
+    .replace(/e_[123]/g, '')
+    .replace(/[ijk]/g, '');
+  const nums = [];
+  const re = /-?\d+(?:\.\d+)?/g;
+  let m;
+  while ((m = re.exec(cleaned)) !== null) nums.push(parseFloat(m[0]));
+  if (nums.length >= 1) return [nums[0]||0, nums[1]||0, nums[2]||0];
+
+  return [0, 0, 0];
+}
+
+// 实时 KaTeX 预览
+const latexInput = document.getElementById('latexInput');
+const previewEl = document.getElementById('preview');
+function renderPreview() {
+  const tex = latexInput.value.trim() || '\\,0\\,';
+  try {
+    katex.render(tex, previewEl, { throwOnError: true, displayMode: true });
+  } catch (e) {
+    previewEl.innerHTML = '<span class="err">语法错误：' + e.message + '</span>';
+  }
+}
+latexInput.addEventListener('input', renderPreview);
+renderPreview();
+
+function play() {
+  if (animating) return;
+  const [x, y, z] = parseVector(latexInput.value);
+  if (x === 0 && y === 0 && z === 0) {
+    statusEl.innerHTML = '<b>未能解析出非零坐标</b><br>试试输入 (3, 2, 4) 或 \\begin{pmatrix}3\\\\2\\\\4\\end{pmatrix}';
+    return;
+  }
+  if (Math.abs(x) > AXIS_LEN || Math.abs(y) > AXIS_LEN || Math.abs(z) > AXIS_LEN) {
+    statusEl.innerHTML = '<b>坐标超出范围</b><br>请把每个分量控制在 ±' + AXIS_LEN + ' 以内。';
+    return;
+  }
+
+  // 根据非零分量动态构建路径段：填了几个分量就走几段
+  const segs = [];
+  let cur = to3d(0, 0, 0);
+  if (x !== 0) {
+    const next = to3d(x, 0, 0);
+    segs.push({ from: cur, to: next, color: 0xef4444, axis: 'x', value: x });
+    cur = next;
+  }
+  if (y !== 0) {
+    const next = to3d(x, y, 0);
+    segs.push({ from: cur, to: next, color: 0x22c55e, axis: 'y', value: y });
+    cur = next;
+  }
+  if (z !== 0) {
+    const next = to3d(x, y, z);
+    segs.push({ from: cur, to: next, color: 0x3b82f6, axis: 'z', value: z });
+    cur = next;
+  }
+
+  if (segs.length === 0) {
+    statusEl.innerHTML = '<b>请至少输入一个非零坐标</b><br>留空或填 0 的方向将不会移动。';
+    return;
+  }
+
+  clearPath();
+  animating = true;
+  animStart = performance.now();
+  pathData = { segs, final: cur, x, y, z };
+  const dimName = segs.length === 1 ? '一维情形' : segs.length === 2 ? '二维情形' : '三维情形';
+  statusEl.innerHTML = '<b>阶段 1 / ' + segs.length + '</b>（' + dimName + '）<br>' + segIntro(segs[0], true);
+}
+
+function segIntro(s, isFirst) {
+  const sign = s.value >= 0 ? '前进' : '后退';
+  const abs = Math.abs(s.value);
+  if (isFirst) return '从原点 O 沿 <b>' + s.axis + '</b> 轴' + sign + ' <b>' + abs + '</b> 个单位 …';
+  const fp = s.from;
+  const label = '(' + fp.z + ', ' + fp.x + ', ' + fp.y + ')';
+  return '到达 ' + label + ' 后，沿 <b>' + s.axis + '</b> 轴' + sign + ' <b>' + abs + '</b> 个单位 …';
+}
+
+function addSeg(a, b, t, color) {
+  const cur = a.clone().lerp(b, t);
+  const geo = new THREE.BufferGeometry().setFromPoints([a, cur]);
+  pathGroup.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ color })));
+}
+
+function reset() {
+  animating = false;
+  pathData = null;
+  clearPath();
+  ball.position.copy(to3d(0,0,0));
+  statusEl.innerHTML = '点击「播放动画」，从原点 O 出发沿坐标轴逐段合成。';
+}
+
+document.getElementById('playBtn').addEventListener('click', play);
+document.getElementById('resetBtn').addEventListener('click', reset);
+ball.position.copy(to3d(0,0,0));
+
+function addAuxDashed(a, b) {
+  const geo = new THREE.BufferGeometry().setFromPoints([a, b]);
+  const mat = new THREE.LineDashedMaterial({ color: 0x9ca3af, dashSize: 0.15, gapSize: 0.1, transparent: true, opacity: 0.7 });
+  const line = new THREE.Line(geo, mat);
+  line.computeLineDistances();
+  pathGroup.add(line);
+}
+
+function animate(now) {
+  requestAnimationFrame(animate);
+  controls.update();
+
+  if (animating && pathData) {
+    const { segs, final, x, y, z } = pathData;
+    const total = segs.length;
+    const elapsed = now - animStart;
+    const seg = Math.floor(elapsed / SEG_DUR);
+    let t = (elapsed % SEG_DUR) / SEG_DUR;
+    t = easeInOut(Math.min(1, Math.max(0, t)));
+
+    let cur;
+    // 清空旧线段
+    while (pathGroup.children.length) {
+      const c = pathGroup.children.pop();
+      c.geometry.dispose(); c.material.dispose();
+    }
+
+    if (seg < total) {
+      const s = segs[seg];
+      cur = s.from.clone().lerp(s.to, t);
+      // 前面的段画完整，当前段按 t 画
+      for (let i = 0; i < seg; i++) addSeg(segs[i].from, segs[i].to, 1, segs[i].color);
+      addSeg(s.from, s.to, t, s.color);
+      if (seg > 0) {
+        statusEl.innerHTML = '<b>阶段 ' + (seg + 1) + ' / ' + total + '</b><br>' + segIntro(s, false);
+      }
+    } else {
+      cur = final.clone();
+      for (let i = 0; i < total; i++) addSeg(segs[i].from, segs[i].to, 1, segs[i].color);
+
+      finalMarker = new THREE.Mesh(
+        new THREE.SphereGeometry(0.2, 24, 24),
+        new THREE.MeshBasicMaterial({ color: 0xf3f4f6 })
+      );
+      finalMarker.position.copy(final);
+      scene.add(finalMarker);
+
+      // 合成向量：从原点 O 直连终点，带箭头（紫色）
+      const origin = to3d(0, 0, 0);
+      const vecDir = final.clone().sub(origin);
+      const vecLen = vecDir.length();
+      if (vecLen > 0.01) {
+        const unitDir = vecDir.clone().normalize();
+        const vecColor = 0xc084fc;
+        const arrowLen = 0.35;
+        const lineEnd = final.clone().sub(unitDir.clone().multiplyScalar(arrowLen));
+        pathGroup.add(new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints([origin, lineEnd]),
+          new THREE.LineBasicMaterial({ color: vecColor })
+        ));
+        const cone = new THREE.Mesh(
+          new THREE.ConeGeometry(0.1, arrowLen, 16),
+          new THREE.MeshBasicMaterial({ color: vecColor })
+        );
+        cone.position.copy(final.clone().sub(unitDir.clone().multiplyScalar(arrowLen / 2)));
+        cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), unitDir);
+        pathGroup.add(cone);
+      }
+
+      // 辅助虚线：只在对应分量非零时画到坐标面的投影
+      if (z !== 0) addAuxDashed(final, to3d(x, y, 0));
+      if (y !== 0) addAuxDashed(final, to3d(x, 0, z));
+      if (x !== 0) addAuxDashed(final, to3d(0, y, z));
+
+      // 分解式：只写非零分量
+      const terms = [];
+      if (x !== 0) terms.push(x + '·e₁');
+      if (y !== 0) terms.push(y + '·e₂');
+      if (z !== 0) terms.push(z + '·e₃');
+      const dimWord = total === 1 ? '一维' : total === 2 ? '二维' : '三维';
+      statusEl.innerHTML = '<b>合成完成（' + dimWord + '）</b><br>终点坐标为 <b>(' + x + ', ' + y + ', ' + z + ')</b>'
+        + (terms.length ? '<br>= ' + terms.join(' + ') : '');
+      animating = false;
+    }
+    ball.position.copy(cur);
+  }
+
+  // 标签跟随球
+  const v = ball.position.clone().project(camera);
+  const visible = v.z < 1 && Math.abs(v.x) < 1.2 && Math.abs(v.y) < 1.2;
+  if (visible && (animating || finalMarker)) {
+    const sx = (v.x * 0.5 + 0.5) * (window.innerWidth - 56);
+    const sy = (-v.y * 0.5 + 0.5) * window.innerHeight;
+    tag.style.left = sx + 'px';
+    tag.style.top = sy + 'px';
+    tag.textContent = '(' + ball.position.z.toFixed(1) + ', ' + ball.position.x.toFixed(1) + ', ' + ball.position.y.toFixed(1) + ')';
+    tag.style.opacity = 1;
+  } else {
+    tag.style.opacity = 0;
+  }
+
+  renderer.render(scene, camera);
+}
+
+requestAnimationFrame(animate);
+
+window.addEventListener('resize', () => {
+  camera.aspect = (window.innerWidth - 56) / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize((window.innerWidth - 56), window.innerHeight);
+});
+</script>
+<script>
+  // highlight current page in drawer
+  (function(){
+    var page = document.body.getAttribute('data-page');
+    if (!page) return;
+    document.querySelectorAll('.drawer-link').forEach(function(a){
+      if (a.getAttribute('data-page') === page) a.classList.add('active');
+    });
+  })();
+</script>
+</body>
+</html>
