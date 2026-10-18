@@ -45,6 +45,17 @@
   }
   .preview .err { color: #f87171; font-size: 12px; }
   .btns { display: flex; gap: 8px; margin-top: 14px; }
+  .mode-switch { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .mode-switch .lbl { font-size: 12px; color: #9ca3af; }
+  .seg {
+    display: flex; background: #1a1d24; border: 1px solid #2d323b; border-radius: 8px;
+    overflow: hidden; flex-shrink: 0;
+  }
+  .seg button {
+    flex: none; padding: 6px 14px; border: none; cursor: pointer;
+    background: transparent; color: #9ca3af; font-size: 12px; font-weight: 600;
+  }
+  .seg button.on { background: #4f46e5; color: #fff; }
   button {
     flex: 1; padding: 9px 0; border: none; border-radius: 8px; cursor: pointer;
     font-size: 13px; font-weight: 600; transition: transform .1s;
@@ -119,7 +130,15 @@
 </div>
 
 <div class="panel">
-  <h2>矩阵 A（3×3）</h2>
+  <div class="mode-switch">
+    <span class="lbl">模式</span>
+    <div class="seg" id="modeSeg">
+      <button id="modeNum" class="on">纯数字</button>
+      <button id="modeDim">量纲</button>
+    </div>
+  </div>
+
+  <h2>矩阵 A</h2>
   <input id="matrixInput" class="latex-input" type="text"
     value="\begin{bmatrix}2&amp;1&amp;0\\0&amp;1&amp;3\\0&amp;0&amp;2\end{bmatrix}" spellcheck="false">
   <div class="preview" id="matrixPreview"></div>
@@ -206,21 +225,31 @@ function setArrow(arrow, dirArr, length) {
 function makeArrow(color) {
   return new THREE.ArrowHelper(new THREE.Vector3(0,1,0), new THREE.Vector3(0,0,0), 1, color, 0.18, 0.08);
 }
-function makeLabel(text, color) {
+function makeSprite(text, color, opts) {
+  opts = opts || {};
+  const bold = opts.bold !== false;
+  const px = opts.px || 64;
+  // 按文本长度估算宽度
   const cv = document.createElement('canvas');
-  cv.width = 256; cv.height = 128;
+  const padX = 16, padY = 8;
+  cv.height = 96;
+  cv.width = Math.max(96, text.length * px * 0.72 + padX * 2);
   const ctx = cv.getContext('2d');
-  ctx.clearRect(0,0,256,128);
+  ctx.clearRect(0,0,cv.width,cv.height);
   ctx.fillStyle = color;
-  ctx.font = 'italic bold 80px Georgia, serif';
+  ctx.font = (bold?'bold ':'') + px + 'px "Segoe UI","Microsoft YaHei",Georgia,serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(text, 128, 64);
+  ctx.fillText(text, cv.width/2, cv.height/2);
   const tex = new THREE.CanvasTexture(cv);
   tex.anisotropy = 4;
+  const w = cv.width / cv.height;
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
-  sp.scale.set(0.55, 0.28, 1);
+  sp.scale.set(1.1 * w, 1.1, 1);
   return sp;
+}
+function makeLabel(text, color) {
+  return makeSprite(text, color, { px: 80 });
 }
 
 // 左面板：标准基 i/j/k（前 n 个）+ 紫色 v
@@ -246,12 +275,121 @@ const rightPathGroup = new THREE.Group();
 right.scene.add(rightPathGroup);
 let rightPurpleArrow = null;
 
+// ============ 量纲引擎（量纲模式） ============
+// 量纲指数向量顺序: [kg, m, s, A, K, mol, cd]
+const DIM_ZERO = [0,0,0,0,0,0,0];
+const DIM_UNIT = {
+  'kg':[1,0,0,0,0,0,0], 'g':[-3,0,0,0,0,0,0],
+  'm':[0,1,0,0,0,0,0], 'cm':[0,1,0,0,0,0,0], 'mm':[0,1,0,0,0,0,0], 'km':[0,1,0,0,0,0,0],
+  's':[0,0,1,0,0,0,0], 'min':[0,0,1,0,0,0,0], 'h':[0,0,1,0,0,0,0],
+  'A':[0,0,0,1,0,0,0], 'K':[0,0,0,0,1,0,0], 'mol':[0,0,0,0,0,1,0], 'cd':[0,0,0,0,0,0,1],
+  'Hz':[0,0,-1,0,0,0,0],
+  'N':[1,1,-2,0,0,0,0],
+  'Pa':[-1,1,-2,0,0,0,0],
+  'J':[2,1,-2,0,0,0,0],
+  'W':[2,1,-3,0,0,0,0],
+  'C':[0,0,1,1,0,0,0],
+  'V':[2,1,-3,-1,0,0,0],
+  'F':[-2,-1,4,2,0,0,0],
+  'Ω':[2,1,-3,-2,0,0,0], 'ohm':[2,1,-3,-2,0,0,0],
+  'S':[-2,-1,3,2,0,0,0],
+  'Wb':[2,1,-2,-1,0,0,0],
+  'T':[0,1,-2,-1,0,0,0],
+  'H':[2,1,-2,-2,0,0,0],
+  'L':[3,0,0,0,0,0,0],
+  'rad':[0,0,0,0,0,0,0]
+};
+const DIM_SUP = {'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','-':'⁻'};
+const DIM_SUP_MAP = {'⁰':'0','¹':'1','²':'2','³':'3','⁴':'4','⁵':'5','⁶':'6','⁷':'7','⁸':'8','⁹':'9','⁻':'-'};
+function dimAdd(a,b){ return a.map((x,i)=>x+(b[i]||0)); }
+function dimSub(a,b){ return a.map((x,i)=>x-(b[i]||0)); }
+function dimMul(a,n){ return a.map(x=>x*n); }
+function dimEq(a,b){ return a.every((x,i)=>x===b[i]); }
+function unitTerm(name){
+  name = name.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹⁻]/g, c=>DIM_SUP_MAP[c]||c);
+  const m = name.match(/^([A-Za-z]+)\s*\^?\s*([-]?\d+)?$/);
+  let base=name, power=1;
+  if (m){ base=m[1]; if(m[2]!==undefined) power=parseInt(m[2],10); }
+  const d = DIM_UNIT[base];
+  if(!d) return null;
+  return dimMul(d, power);
+}
+function parseUnit(str){
+  if(!str) return DIM_ZERO.slice();
+  str = String(str).trim();
+  str = str.replace(/\\text\s*\{([^}]*)\}/g,'$1').replace(/\\mathrm\s*\{([^}]*)\}/g,'$1');
+  // LaTeX 希腊字母/单位命令 -> 字符
+  str = str.replace(/\\Omega/g,'Ω').replace(/\\ohm/g,'Ω')
+           .replace(/\\mu\b/g,'µ').replace(/\\mu\s*/g,'µ')
+           .replace(/\\Delta/g,'').replace(/\\degree/g,'°');
+  str = str.replace(/\s+/g,'·');
+  str = str.replace(/[·×*]/g,'·');
+  str = str.replace(/\^([-]?\d+)/g,'$1');
+  let pos=0;
+  function isU(c){ return /[A-Za-zΩ]/.test(c); }
+  function factor(){
+    if(str[pos]==='('){ pos++; const v=sum(); if(str[pos]===')') pos++; return v; }
+    let name='';
+    while(pos<str.length && (isU(str[pos]) || /[⁰¹²³⁴⁵⁶⁷⁸⁹⁻-]/.test(str[pos]) || /\d/.test(str[pos]))){ name+=str[pos]; pos++; }
+    return unitTerm(name);
+  }
+  function sum(){
+    let v=factor(); if(v===null) return null;
+    while(pos<str.length){
+      if(str[pos]==='·' || str[pos]==='/'){
+        const op=str[pos]; pos++;
+        const w=factor(); if(w===null) return null;
+        v = op==='·'? dimAdd(v,w) : dimSub(v,w);
+      } else break;
+    }
+    return v;
+  }
+  return sum();
+}
+function dimExpSup(e){
+  if(e===1) return '';
+  const neg=e<0;
+  const a=String(Math.abs(e)).split('').map(c=>DIM_SUP[c]||c).join('');
+  return (neg?'⁻':'')+a;
+}
+function dimToString(d){
+  const names=['kg','m','s','A','K','mol','cd'];
+  const parts=[];
+  for(let i=0;i<d.length;i++){
+    const e=d[i]; if(e===0) continue;
+    let s=names[i];
+    if(e!==1) s+=dimExpSup(e);
+    parts.push(s);
+  }
+  return parts.join('·');
+}
+function parseQty(str){
+  let s=String(str||'').trim();
+  if(!s) return {num:0, dim:DIM_ZERO.slice()};
+  let unitPart='';
+  const tm=s.match(/\\text\s*\{([^}]*)\}/);
+  if(tm){ unitPart=tm[1].trim(); s=s.replace(/\\text\s*\{[^}]*\}/,''); }
+  s=s.replace(/\\[,;:! ]/g,'');
+  const nm=s.match(/[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?/);
+  let num=1, rest='';
+  if(nm){ num=parseFloat(nm[0]); rest=s.slice(nm.index+nm[0].length); }
+  else rest=s;
+  const unitStr=(unitPart||rest).trim();
+  const dim=parseUnit(unitStr)||DIM_ZERO.slice();
+  return {num, dim};
+}
+
 // ============ 解析 ============
+// 解析矩阵：量纲模式下返回 {num:[][], dim:[][][]}
 function parseMatrix(str) {
   const m = (str||'').match(/\\begin\{(?:bmatrix|pmatrix|matrix|Bmatrix)\}(.+?)\\end\{/);
   if (!m) return null;
   const rows = m[1].split(/\\\\/).map(r => r.trim()).filter(Boolean);
   const mat = rows.map(row => row.split(/&/).map(s => {
+    if (dimMode) {
+      const q = parseQty(s.trim());
+      return q;
+    }
     const n = parseFloat(s.trim());
     return isNaN(n) ? 0 : n;
   }));
@@ -259,29 +397,57 @@ function parseMatrix(str) {
   const ncols = mat[0].length;
   if (mat.some(r => r.length !== ncols)) return null;
   if (mat.length > 3 || ncols > 3) return null; // MVP 只支持 ≤3 维
-  return mat; // m×n 数组，m,n ≤ 3
+  return mat;
 }
 
 function parseVector(str) {
   let s = (str||'').trim();
   if (!s) return [];
   s = s.replace(/\\?vec\{?[a-zA-Z]\}?\s*=\s*/, '').replace(/^[a-zA-Z]\s*=\s*/, '');
+  // 先清除 LaTeX 间距命令，避免 \, 里的逗号被当成分隔符
+  s = s.replace(/\\[,;:! ]/g, ' ');
   const bracket = s.match(/[\(\[\<]([^\)\]\>]+)[\)\]\>]/);
   if (bracket) {
-    return bracket[1].split(/[,，;；]/).map(p => parseFloat(p.trim())).filter(n => !isNaN(n));
+    return bracket[1].split(/[,，;；]/).map(p => {
+      const t = p.trim(); if (!t) return null;
+      return dimMode ? parseQty(t) : (isNaN(parseFloat(t)) ? 0 : parseFloat(t));
+    }).filter(n => n !== null);
   }
   const matrix = s.match(/\\begin\{(?:bmatrix|pmatrix|matrix)\}(.+?)\\end\{/);
   if (matrix) {
     const rows = matrix[1].split(/\\\\/).map(r => r.trim()).filter(Boolean);
-    return rows.map(r => parseFloat(r.trim())).filter(n => !isNaN(n));
+    return rows.map(r => {
+      const t = r.trim(); if (!t) return null;
+      return dimMode ? parseQty(t) : (isNaN(parseFloat(t)) ? 0 : parseFloat(t));
+    }).filter(n => n !== null);
   }
   return [];
 }
 
+// 量纲模式下：A 元素 {num,dim}，v 元素 {num,dim}。
+// 输出 y_i = Σ_j A_ij * v_j，要求每项量纲一致。
 function matVec(A, v) {
   const m = A.length, n = A[0].length;
-  if (v.length !== n) return null; // 维度不匹配
-  return A.map(row => row.reduce((s, a, j) => s + a*v[j], 0));
+  if (v.length !== n) return null;
+  if (!dimMode) return A.map(row => row.reduce((s, a, j) => s + a*v[j], 0));
+  // 量纲模式：返回 {num, dim}
+  const out = [];
+  for (let i = 0; i < m; i++) {
+    let num = 0, dimAcc = null, err = null;
+    for (let j = 0; j < n; j++) {
+      const a = A[i][j], vv = v[j];
+      const prodNum = a.num * vv.num;
+      // 0 项不贡献量纲（0·x = 0 不改变维度）
+      if (Math.abs(prodNum) < 1e-12) continue;
+      const itemDim = dimAdd(a.dim, vv.dim);
+      if (dimAcc === null) dimAcc = itemDim;
+      else if (!dimEq(dimAcc, itemDim)) { err = '分量 ' + (i+1) + ' 第 ' + (j+1) + ' 项量纲不一致'; break; }
+      num += prodNum;
+    }
+    if (dimAcc === null) dimAcc = DIM_ZERO.slice();
+    out.push(err ? { err } : { num, dim: dimAcc });
+  }
+  return out;
 }
 function colsOf(A) {
   const m = A.length, n = A[0].length;
@@ -296,6 +462,9 @@ function colsOf(A) {
 function pad3(arr) {
   return [arr[0]||0, arr[1]||0, arr[2]||0];
 }
+// 量纲模式下取数值部分（用于动画坐标）
+function numOf(x){ return dimMode ? x.num : x; }
+function numArrOf(arr){ return arr.map(x => dimMode ? x.num : x); }
 
 // ============ KaTeX 预览 ============
 const matrixInput = document.getElementById('matrixInput');
@@ -321,13 +490,46 @@ matrixInput.addEventListener('input', renderPreviews);
 vectorInput.addEventListener('input', renderPreviews);
 renderPreviews();
 
+// ============ 模式（纯数字 / 量纲） ============
+let dimMode = false;
+const modeNumBtn = document.getElementById('modeNum');
+const modeDimBtn = document.getElementById('modeDim');
+function setMode(dim){
+  dimMode = dim;
+  modeNumBtn.classList.toggle('on', !dim);
+  modeDimBtn.classList.toggle('on', dim);
+  resetView();
+  renderPreviews();
+}
+modeNumBtn.addEventListener('click', () => setMode(false));
+modeDimBtn.addEventListener('click', () => setMode(true));
+
 // ============ 渲染当前状态 ============
 const STD_BASIS = [[1,0,0],[0,1,0],[0,0,1]];
 const STD_COLORS = [0xef4444, 0x22c55e, 0x3b82f6];
 const BASIS_NAMES = ["î","ĵ","k̂"];
 
+// 坐标+单位标注 sprite（量纲模式下显示，标在向量尾部）
+const leftCoordLabel = makeSprite('', '#c084fc', { px: 34 });
+const rightCoordLabel = makeSprite('', '#c084fc', { px: 34 });
+leftCoordLabel.visible = false; rightCoordLabel.visible = false;
+left.scene.add(leftCoordLabel); right.scene.add(rightCoordLabel);
+
+// 格式：每分量 数值+单位，如 "(2 m, 1 m/s, 1 s)"
+function fmtCoord(v, prefix){
+  const parts = v.map(q => {
+    const n = (dimMode ? q.num : q);
+    const d = dimMode ? dimToString(q.dim) : '';
+    const ns = Math.abs(n - Math.round(n)) < 1e-9 ? String(n) : n.toFixed(2);
+    return d ? (ns + ' ' + d) : ns;
+  });
+  return (prefix ? prefix + ' = ' : '') + '(' + parts.join(', ') + ')';
+}
+
 function drawLeft(v) {
   const n = v.length;
+  // v 可能含量纲
+  const vnum = dimMode ? v.map(q=>q.num) : v;
   ['i','j','k'].forEach((name, idx) => {
     const show = idx < n;
     leftArrows[name].visible = show;
@@ -335,11 +537,33 @@ function drawLeft(v) {
     if (show) {
       setArrow(leftArrows[name], STD_BASIS[idx], 1);
       leftLabels[idx].position.copy(to3dVec(STD_BASIS[idx]).multiplyScalar(1.25));
+      // 量纲模式：基向量标单位（单位取对应分量单位）
+      if (dimMode) {
+        const d = v[idx] ? v[idx].dim : DIM_ZERO;
+        const ds = dimToString(d);
+        // 用文本 sprite 重新生成标签：i·m 等
+        const t = makeSprite(['i','j','k'][idx] + (ds ? '·'+ds : ''), ['#f87171','#4ade80','#60a5fa'][idx], { px: 56 });
+        leftLabels[idx].material.map = t.material.map;
+        leftLabels[idx].scale.copy(t.scale);
+      }
     }
   });
-  const len = Math.hypot(...v);
+  const len = Math.hypot(...vnum);
   leftArrows.v.visible = len > 0.001;
-  if (len > 0.001) setArrow(leftArrows.v, pad3(v), len);
+  if (len > 0.001) setArrow(leftArrows.v, pad3(vnum), len);
+  // 坐标标注
+  if (dimMode) {
+    leftCoordLabel.visible = v.length > 0;
+    if (v.length > 0) {
+      leftCoordLabel.material.map.image.getContext('2d');
+      const t = makeSprite(fmtCoord(v), '#c084fc', { px: 34 });
+      leftCoordLabel.material.map = t.material.map;
+      leftCoordLabel.scale.copy(t.scale);
+      leftCoordLabel.position.copy(to3dVec(vnum).multiplyScalar(1.05 + 0.18));
+    }
+  } else {
+    leftCoordLabel.visible = false;
+  }
 }
 
 function setRightBasis(cols) {
@@ -349,9 +573,18 @@ function setRightBasis(cols) {
     rightArrows[name].visible = show;
     rightLabels[idx].visible = show;
     if (show) {
-      const len = Math.hypot(...c);
-      setArrow(rightArrows[name], c, len);
-      rightLabels[idx].position.copy(to3dVec(c).normalize().multiplyScalar(len + 0.3));
+      const cnum = dimMode ? c.map(q=>q.num) : c;
+      const len = Math.hypot(...cnum);
+      setArrow(rightArrows[name], cnum, len);
+      rightLabels[idx].position.copy(to3dVec(cnum).normalize().multiplyScalar(len + 0.3));
+      if (dimMode) {
+        // 基向量标单位：取该列向量第 1 个分量的单位作为代表（列向量分量量纲可能不同）
+        const q = c[0];
+        const ds = q && q.dim ? dimToString(q.dim) : '';
+        const t = makeSprite(['î','ĵ','k̂'][idx] + (ds ? '·'+ds : ''), ['#f87171','#4ade80','#60a5fa'][idx], { px: 56 });
+        rightLabels[idx].material.map = t.material.map;
+        rightLabels[idx].scale.copy(t.scale);
+      }
     }
   });
 }
@@ -403,7 +636,18 @@ function applyTransform() {
     statusEl.innerHTML = '<b>维度不匹配</b><br>矩阵 A 是 ' + m + '×' + n + '，需要 ' + n + ' 维向量；当前输入是 ' + v.length + ' 维。';
     return;
   }
-  if (v.every(x => x === 0)) { statusEl.innerHTML = '<b>零向量</b>'; return; }
+  const vnum = numArrOf(v);
+  if (vnum.every(x => Math.abs(x) < 1e-12)) { statusEl.innerHTML = '<b>零向量</b>'; return; }
+
+  // 量纲模式：校验并算带单位的 A·v
+  let Av = matVec(A, v);
+  if (dimMode && Av) {
+    const err = Av.find(o => o.err);
+    if (err) {
+      statusEl.innerHTML = '<b>量纲不齐次</b><br>' + err.err + '（量纲齐次性原则：同一分量各乘积项量纲必须一致）。';
+      return;
+    }
+  }
 
   drawLeft(v);
   fitCamera(left, n);
@@ -416,15 +660,17 @@ function applyTransform() {
   let curPt = to3d(0,0,0);
   const Pts = [curPt.clone()];
   cols.forEach((c, j) => {
-    curPt = curPt.clone().add(to3dVec(c.map(x => x * v[j])));
+    // 数值部分驱动动画
+    const cnum = numArrOf(c);
+    curPt = curPt.clone().add(to3dVec(cnum.map(x => x * vnum[j])));
     Pts.push(curPt.clone());
   });
 
   const segs = [];
   for (let j = 0; j < n; j++) {
-    if (v[j] !== 0) segs.push({ from: Pts[j], to: Pts[j+1], color: STD_COLORS[j], axis: BASIS_NAMES[j], value: v[j] });
+    if (vnum[j] !== 0) segs.push({ from: Pts[j], to: Pts[j+1], color: STD_COLORS[j], axis: BASIS_NAMES[j], value: vnum[j] });
   }
-  anim = { start: performance.now(), segs, P3: Pts[n], Av: matVec(A, v) };
+  anim = { start: performance.now(), segs, P3: Pts[n], Av, vnum };
   statusEl.innerHTML = '<b>阶段 1 / ' + segs.length + '</b><br>从 O 沿新基 ' + segs[0].axis + ' 走 <b>' + segs[0].value + '</b> 个单位 …';
 }
 
@@ -435,6 +681,7 @@ function resetView() {
   setRightBasis(STD_BASIS);
   clearRightPath();
   rightBall.position.copy(to3d(0,0,0));
+  if (rightCoordLabel) rightCoordLabel.visible = false;
   fitCamera(left, v.length || 3);
   fitCamera(right, 3);
   statusEl.innerHTML = '已重置。点击「应用变换」重新演示。';
@@ -481,8 +728,19 @@ function loop(now) {
         const dir = P3.clone().sub(origin).normalize();
         rightPurpleArrow = new THREE.ArrowHelper(dir, origin, fullLen, 0xc084fc, 0.25, 0.12);
         right.scene.add(rightPurpleArrow);
+        // 量纲模式：A·v 尾部标坐标+单位
+        if (dimMode && rightCoordLabel) {
+          const t = makeSprite(fmtCoord(Av), '#c084fc', { px: 34 });
+          rightCoordLabel.material.map = t.material.map;
+          rightCoordLabel.scale.copy(t.scale);
+          rightCoordLabel.visible = true;
+          rightCoordLabel.position.copy(P3.clone().normalize().multiplyScalar(fullLen + 0.35));
+        }
       }
-      statusEl.innerHTML = '<b>变换完成</b><br>A·v = (' + Av.map(x=>+x.toFixed(2)).join(', ') + ')'
+      const avDesc = dimMode
+        ? Av.map(x => (+x.num.toFixed(2)) + (dimToString(x.dim) ? ' ' + dimToString(x.dim) : '')).join(', ')
+        : Av.map(x=>+x.toFixed(2)).join(', ');
+      statusEl.innerHTML = '<b>变换完成</b><br>A·v = (' + avDesc + ')'
         + '<br>映射到 R^' + Av.length;
       anim = null;
     }

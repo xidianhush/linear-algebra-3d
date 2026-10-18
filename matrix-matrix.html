@@ -42,6 +42,17 @@
   }
   .preview .err { color: #f87171; font-size: 12px; }
   .btns { display: flex; gap: 8px; margin-top: 14px; }
+  .mode-switch { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .mode-switch .lbl { font-size: 12px; color: #9ca3af; }
+  .seg {
+    display: flex; background: #1a1d24; border: 1px solid #2d323b; border-radius: 8px;
+    overflow: hidden; flex-shrink: 0;
+  }
+  .seg button {
+    flex: none; padding: 6px 14px; border: none; cursor: pointer;
+    background: transparent; color: #9ca3af; font-size: 12px; font-weight: 600;
+  }
+  .seg button.on { background: #4f46e5; color: #fff; }
   button {
     flex: 1; padding: 9px 0; border: none; border-radius: 8px; cursor: pointer;
     font-size: 13px; font-weight: 600; transition: transform .1s;
@@ -116,6 +127,14 @@
 </div>
 
 <div class="panel">
+  <div class="mode-switch">
+    <span class="lbl">模式</span>
+    <div class="seg" id="modeSeg">
+      <button id="modeNum" class="on">纯数字</button>
+      <button id="modeDim">量纲</button>
+    </div>
+  </div>
+
   <h2>矩阵 A（作用矩阵）</h2>
   <input id="matrixAInput" class="latex-input" type="text"
     value="\begin{bmatrix}2&amp;1&amp;0\\0&amp;1&amp;3\\0&amp;0&amp;2\end{bmatrix}" spellcheck="false">
@@ -235,12 +254,118 @@ function makeEndBall() {
   );
 }
 
+// ============ 量纲引擎（量纲模式） ============
+// 量纲指数向量顺序: [kg, m, s, A, K, mol, cd]
+const DIM_ZERO = [0,0,0,0,0,0,0];
+const DIM_UNIT = {
+  'kg':[1,0,0,0,0,0,0], 'g':[-3,0,0,0,0,0,0],
+  'm':[0,1,0,0,0,0,0], 'cm':[0,1,0,0,0,0,0], 'mm':[0,1,0,0,0,0,0], 'km':[0,1,0,0,0,0,0],
+  's':[0,0,1,0,0,0,0], 'min':[0,0,1,0,0,0,0], 'h':[0,0,1,0,0,0,0],
+  'A':[0,0,0,1,0,0,0], 'K':[0,0,0,0,1,0,0], 'mol':[0,0,0,0,0,1,0], 'cd':[0,0,0,0,0,0,1],
+  'Hz':[0,0,-1,0,0,0,0],
+  'N':[1,1,-2,0,0,0,0],
+  'Pa':[-1,1,-2,0,0,0,0],
+  'J':[2,1,-2,0,0,0,0],
+  'W':[2,1,-3,0,0,0,0],
+  'C':[0,0,1,1,0,0,0],
+  'V':[2,1,-3,-1,0,0,0],
+  'F':[-2,-1,4,2,0,0,0],
+  'Ω':[2,1,-3,-2,0,0,0], 'ohm':[2,1,-3,-2,0,0,0],
+  'S':[-2,-1,3,2,0,0,0],
+  'Wb':[2,1,-2,-1,0,0,0],
+  'T':[0,1,-2,-1,0,0,0],
+  'H':[2,1,-2,-2,0,0,0],
+  'L':[3,0,0,0,0,0,0],
+  'rad':[0,0,0,0,0,0,0]
+};
+const DIM_SUP = {'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','-':'⁻'};
+const DIM_SUP_MAP = {'⁰':'0','¹':'1','²':'2','³':'3','⁴':'4','⁵':'5','⁶':'6','⁷':'7','⁸':'8','⁹':'9','⁻':'-'};
+function dimAdd(a,b){ return a.map((x,i)=>x+(b[i]||0)); }
+function dimSub(a,b){ return a.map((x,i)=>x-(b[i]||0)); }
+function dimMul(a,n){ return a.map(x=>x*n); }
+function dimEq(a,b){ return a.every((x,i)=>x===b[i]); }
+function unitTerm(name){
+  name = name.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹⁻]/g, c=>DIM_SUP_MAP[c]||c);
+  const m = name.match(/^([A-Za-z]+)\s*\^?\s*([-]?\d+)?$/);
+  let base=name, power=1;
+  if (m){ base=m[1]; if(m[2]!==undefined) power=parseInt(m[2],10); }
+  const d = DIM_UNIT[base];
+  if(!d) return null;
+  return dimMul(d, power);
+}
+function parseUnit(str){
+  if(!str) return DIM_ZERO.slice();
+  str = String(str).trim();
+  str = str.replace(/\\text\s*\{([^}]*)\}/g,'$1').replace(/\\mathrm\s*\{([^}]*)\}/g,'$1');
+  str = str.replace(/\\Omega/g,'Ω').replace(/\\ohm/g,'Ω')
+           .replace(/\\mu\b/g,'µ').replace(/\\mu\s*/g,'µ')
+           .replace(/\\Delta/g,'').replace(/\\degree/g,'°');
+  str = str.replace(/\s+/g,'·');
+  str = str.replace(/[·×*]/g,'·');
+  str = str.replace(/\^([-]?\d+)/g,'$1');
+  let pos=0;
+  function isU(c){ return /[A-Za-zΩ]/.test(c); }
+  function factor(){
+    if(str[pos]==='('){ pos++; const v=sum(); if(str[pos]===')') pos++; return v; }
+    let name='';
+    while(pos<str.length && (isU(str[pos]) || /[⁰¹²³⁴⁵⁶⁷⁸⁹⁻-]/.test(str[pos]) || /\d/.test(str[pos]))){ name+=str[pos]; pos++; }
+    return unitTerm(name);
+  }
+  function sum(){
+    let v=factor(); if(v===null) return null;
+    while(pos<str.length){
+      if(str[pos]==='·' || str[pos]==='/'){
+        const op=str[pos]; pos++;
+        const w=factor(); if(w===null) return null;
+        v = op==='·'? dimAdd(v,w) : dimSub(v,w);
+      } else break;
+    }
+    return v;
+  }
+  return sum();
+}
+function dimExpSup(e){
+  if(e===1) return '';
+  const neg=e<0;
+  const a=String(Math.abs(e)).split('').map(c=>DIM_SUP[c]||c).join('');
+  return (neg?'⁻':'')+a;
+}
+function dimToString(d){
+  const names=['kg','m','s','A','K','mol','cd'];
+  const parts=[];
+  for(let i=0;i<d.length;i++){
+    const e=d[i]; if(e===0) continue;
+    let s=names[i];
+    if(e!==1) s+=dimExpSup(e);
+    parts.push(s);
+  }
+  return parts.join('·');
+}
+function parseQty(str){
+  let s=String(str||'').trim();
+  if(!s) return {num:0, dim:DIM_ZERO.slice()};
+  let unitPart='';
+  const tm=s.match(/\\text\s*\{([^}]*)\}/);
+  if(tm){ unitPart=tm[1].trim(); s=s.replace(/\\text\s*\{[^}]*\}/,''); }
+  s=s.replace(/\\[,;:! ]/g,'');
+  const nm=s.match(/[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?/);
+  let num=1, rest='';
+  if(nm){ num=parseFloat(nm[0]); rest=s.slice(nm.index+nm[0].length); }
+  else rest=s;
+  const unitStr=(unitPart||rest).trim();
+  const dim=parseUnit(unitStr)||DIM_ZERO.slice();
+  return {num, dim};
+}
+function numOf(x){ return dimMode ? x.num : x; }
+function numArrOf(arr){ return arr.map(x => dimMode ? x.num : x); }
+
 // ============ 解析 ============
 function parseMatrix(str) {
   const m = (str||'').match(/\\begin\{(?:bmatrix|pmatrix|matrix|Bmatrix)\}(.+?)\\end\{/);
   if (!m) return null;
   const rows = m[1].split(/\\\\/).map(r => r.trim()).filter(Boolean);
   const mat = rows.map(row => row.split(/&/).map(s => {
+    if (dimMode) return parseQty(s.trim());
     const n = parseFloat(s.trim()); return isNaN(n) ? 0 : n;
   }));
   if (!mat.length) return null;
@@ -252,13 +377,36 @@ function parseMatrix(str) {
 function matMul(A, B) {
   const m = A.length, n = A[0].length, p = B[0].length;
   if (B.length !== n) return null;
+  if (!dimMode) {
+    const C = [];
+    for (let i = 0; i < m; i++) {
+      const row = [];
+      for (let j = 0; j < p; j++) {
+        let s = 0;
+        for (let k = 0; k < n; k++) s += A[i][k] * B[k][j];
+        row.push(s);
+      }
+      C.push(row);
+    }
+    return C;
+  }
+  // 量纲模式：C_ik = Σ_j A_ij·B_jk，量纲每项一致才合法
   const C = [];
   for (let i = 0; i < m; i++) {
     const row = [];
     for (let j = 0; j < p; j++) {
-      let s = 0;
-      for (let k = 0; k < n; k++) s += A[i][k] * B[k][j];
-      row.push(s);
+      let num = 0, dimAcc = null, err = null;
+      for (let k = 0; k < n; k++) {
+        const a = A[i][k], b = B[k][j];
+        const prodNum = a.num * b.num;
+        if (Math.abs(prodNum) < 1e-12) continue; // 0 项不贡献量纲
+        const itemDim = dimAdd(a.dim, b.dim);
+        if (dimAcc === null) dimAcc = itemDim;
+        else if (!dimEq(dimAcc, itemDim)) { err = 'C(' + (i+1) + ',' + (j+1) + ') 第 ' + (k+1) + ' 项量纲不一致'; break; }
+        num += prodNum;
+      }
+      if (dimAcc === null) dimAcc = DIM_ZERO.slice();
+      row.push(err ? { err } : { num, dim: dimAcc });
     }
     C.push(row);
   }
@@ -290,6 +438,46 @@ aInput.addEventListener('input', renderPreviews);
 bInput.addEventListener('input', renderPreviews);
 renderPreviews();
 
+// ============ 模式（纯数字 / 量纲） ============
+let dimMode = false;
+const modeNumBtn = document.getElementById('modeNum');
+const modeDimBtn = document.getElementById('modeDim');
+function setMode(dim){
+  dimMode = dim;
+  modeNumBtn.classList.toggle('on', !dim);
+  modeDimBtn.classList.toggle('on', dim);
+  resetView();
+  renderPreviews();
+}
+modeNumBtn.addEventListener('click', () => setMode(false));
+modeDimBtn.addEventListener('click', () => setMode(true));
+
+// 基向量单位标注用 makeSprite（任意文本）
+function makeSprite(text, color, opts) {
+  opts = opts || {};
+  const px = opts.px || 56;
+  const cv = document.createElement('canvas');
+  const padX = 16;
+  cv.height = 96;
+  cv.width = Math.max(80, text.length * px * 0.72 + padX * 2);
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0,0,cv.width,cv.height);
+  ctx.fillStyle = color;
+  ctx.font = 'bold ' + px + 'px "Segoe UI","Microsoft YaHei",Georgia,serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, cv.width/2, cv.height/2);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.anisotropy = 4;
+  const w = cv.width / cv.height;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+  sp.scale.set(1.1 * w, 1.1, 1);
+  return sp;
+}
+function dimLabelOf(baseName, q, idx){
+  const ds = q && q.dim ? dimToString(q.dim) : '';
+  return baseName + (ds ? '·' + ds : '');
+}
+
 // ============ 工具 ============
 function drawLeftCols(cols) {
   leftArrows.forEach((a, i) => {
@@ -297,9 +485,15 @@ function drawLeftCols(cols) {
     const show = !!c;
     a.visible = show; leftLabels[i].visible = show;
     if (show) {
-      const len = Math.hypot(...c);
-      setArrow(a, c, len);
-      leftLabels[i].position.copy(to3dVec(c).normalize().multiplyScalar(len + 0.35));
+      const cnum = dimMode ? c.map(q=>q.num) : c;
+      const len = Math.hypot(...cnum);
+      setArrow(a, cnum, len);
+      leftLabels[i].position.copy(to3dVec(cnum).normalize().multiplyScalar(len + 0.35));
+      if (dimMode) {
+        const t = makeSprite(dimLabelOf(['b₁','b₂','b₃'][i], c[0], i), COLORS_LIGHT[i], { px: 52 });
+        leftLabels[i].material.map = t.material.map;
+        leftLabels[i].scale.copy(t.scale);
+      }
     }
   });
 }
@@ -309,9 +503,15 @@ function setBasis(cols) {
     const show = !!c;
     a.visible = show; basisLabels[i].visible = show;
     if (show) {
-      const len = Math.hypot(...c);
-      setArrow(a, c, len);
-      basisLabels[i].position.copy(to3dVec(c).normalize().multiplyScalar(len + 0.35));
+      const cnum = dimMode ? c.map(q=>q.num) : c;
+      const len = Math.hypot(...cnum);
+      setArrow(a, cnum, len);
+      basisLabels[i].position.copy(to3dVec(cnum).normalize().multiplyScalar(len + 0.35));
+      if (dimMode) {
+        const t = makeSprite(dimLabelOf(['a₁','a₂','a₃'][i], c[0], i), COLORS_LIGHT[i], { px: 52 });
+        basisLabels[i].material.map = t.material.map;
+        basisLabels[i].scale.copy(t.scale);
+      }
     }
   });
 }
@@ -357,6 +557,19 @@ function applyTransform() {
       '，B 是 ' + B.length + '×' + B[0].length + '；需要 A 的列数 = B 的行数。';
     return;
   }
+  // 量纲模式：检查 C 是否有量纲不一致项
+  if (dimMode) {
+    const flat = colsOf(C);
+    for (let j = 0; j < flat.length; j++) {
+      for (let i = 0; i < flat[j].length; i++) {
+        const e = flat[j][i];
+        if (e && e.err) {
+          statusEl.innerHTML = '<b>量纲不齐次</b><br>' + e.err + '（量纲齐次性原则：同一元素各乘积项量纲必须一致）。';
+          return;
+        }
+      }
+    }
+  }
   const colsA = colsOf(A);
   const colsB = colsOf(B);
   const colsC = colsOf(C);
@@ -371,16 +584,19 @@ function applyTransform() {
   const columnPlans = [];
   for (let j = 0; j < colsB.length; j++) {
     const bj = colsB[j];
+    const bnum = dimMode ? bj.map(q=>q.num) : bj;
     const pts = [to3d(0,0,0)];
     let cur = to3d(0,0,0);
     for (let k = 0; k < 3; k++) {
-      const step = to3dVec((colsA[k]||[0,0,0]).map(x => x * (bj[k]||0)));
+      const ck = colsA[k];
+      const cknum = dimMode && ck ? ck.map(q=>q.num) : (ck||[0,0,0]);
+      const step = to3dVec(cknum.map((x, idx) => x * (bnum[idx]||0)));
       cur = cur.clone().add(step);
       pts.push(cur.clone());
     }
     const segs = [];
     for (let k = 0; k < 3; k++) {
-      if ((bj[k]||0) !== 0) segs.push({ from: pts[k], to: pts[k+1], color: COLORS[k], axis: ['a₁','a₂','a₃'][k], value: bj[k] });
+      if ((bnum[k]||0) !== 0) segs.push({ from: pts[k], to: pts[k+1], color: COLORS[k], axis: ['a₁','a₂','a₃'][k], value: bnum[k] });
     }
     columnPlans.push({ segs, end: pts[3], colsC_j: colsC[j] });
   }
@@ -472,12 +688,30 @@ function loop(now) {
           eb.position.copy(end);
           right.scene.add(eb);
           endBalls.push(eb);
+          // 量纲模式：A·b_j 尾部标坐标+单位
+          if (dimMode && plan.colsC_j[0] && plan.colsC_j[0].num !== undefined) {
+            const parts = plan.colsC_j.map(x => {
+              const d = dimToString(x.dim);
+              return (+x.num.toFixed(2)) + (d ? ' ' + d : '');
+            });
+            const sp = makeSprite('A·b' + (j+1) + ' = (' + parts.join(', ') + ')', '#c084fc', { px: 30 });
+            sp.position.copy(end.clone().normalize().multiplyScalar(fullLen + 0.4));
+            right.scene.add(sp);
+          }
         }
       });
       ball.position.copy(columnPlans[totalCols-1].end);
       let html = '<b>全部完成</b><br>C = A·B，共 ' + totalCols + ' 列';
       columnPlans.forEach((p, j) => {
-        html += '<br>A·b' + (j+1) + ' = (' + p.colsC_j.map(x=>+x.toFixed(2)).join(', ') + ')';
+        if (dimMode && p.colsC_j[0].num !== undefined) {
+          const parts = p.colsC_j.map(x => {
+            const d = dimToString(x.dim);
+            return (+x.num.toFixed(2)) + (d ? ' ' + d : '');
+          });
+          html += '<br>A·b' + (j+1) + ' = (' + parts.join(', ') + ')';
+        } else {
+          html += '<br>A·b' + (j+1) + ' = (' + p.colsC_j.map(x=>+x.toFixed(2)).join(', ') + ')';
+        }
       });
       statusEl.innerHTML = html;
       anim = null;
