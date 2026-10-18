@@ -488,13 +488,25 @@ function vecToLatex(raw) {
   raw = (raw||'').trim();
   if (!raw) return '';
   if (raw.indexOf('\\begin') === 0) return raw;
-  var inner = raw.replace(/^[\[\(\{]+/, '').replace(/[\]\)\}]+$/, '');
-  // LaTeX 细空格命令里的逗号不是分隔符，先换成空格
-  inner = inner.replace(/\\[,;:! ]/g, ' ');
-  var texts = [];
-  inner = inner.replace(/\\text\s*\{([^}]*)\}/g, function(_, c){ texts.push('\\text{'+c+'}'); return '\u0001'+(texts.length-1)+'\u0001'; });
-  var parts = inner.split(/[,，;；]/).map(function(x){ return x.trim(); }).filter(function(x){ return x.length>0; });
-  parts = parts.map(function(x){ return x.replace(/\u0001(\d+)\u0001/g, function(_,i){ return texts[+i]; }); });
+  // 只去掉最外层成对的括号；没有开括号就不删，避免误删 \text{A} 的 }
+  var open = raw.match(/^[\[\(\{]/);
+  var inner = raw.replace(/^[\[\(\{]+/, '');
+  if (open) {
+    var close = open[0] === '[' ? ']' : (open[0] === '(' ? ')' : '}');
+    inner = inner.replace(new RegExp('\\' + close + '$'), '');
+  }
+  // 逐字符扫描，反斜杠后的逗号（如 \,）不算分隔符，\text{...} 原样保留
+  var parts = [], cur = '', esc = false;
+  for (var i = 0; i < inner.length; i++) {
+    var ch = inner[i];
+    if (ch === '\\') { cur += ch; esc = true; continue; }
+    if (esc) { cur += ch; esc = false; continue; }
+    if (ch === ',' || ch === '，' || ch === ';' || ch === '；') {
+      if (cur.trim()) parts.push(cur.trim());
+      cur = '';
+    } else cur += ch;
+  }
+  if (cur.trim()) parts.push(cur.trim());
   if (!parts.length) return raw;
   return '\\begin{pmatrix}' + parts.join(' \\\\ ') + '\\end{pmatrix}';
 }
